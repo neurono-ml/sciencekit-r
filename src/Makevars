@@ -1,0 +1,3 @@
+SCIENCEKIT_LIB_DIR ?= ../tools/native
+PKG_CPPFLAGS = -I.
+PKG_LIBS = -L"$(SCIENCEKIT_LIB_DIR)" -lsciencekit_ffi -lpthread -ldl -lm

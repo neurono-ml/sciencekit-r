@@ -1,0 +1,70 @@
+name: R-CMD-check
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  R-CMD-check:
+    name: Build native library and run R CMD check
+    runs-on: ubuntu-latest
+    env:
+      R_RD4PDF: "times,hyper"
+      _R_CHECK_FORCE_SUGGESTS_: "true"
+    steps:
+      - name: Checkout sciencekit-r
+        uses: actions/checkout@v4
+        with:
+          path: sciencekit-r
+          persist-credentials: false
+
+      - name: Checkout main sciencekit repository
+        uses: actions/checkout@v4
+        with:
+          repository: neurono-ml/sciencekit
+          path: sciencekit
+          persist-credentials: false
+
+      - name: Install Rust 1.85 toolchain
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sciencekit
+
+      - name: Install R and check dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qpdf \
+            r-base \
+            r-base-dev \
+            r-cran-testthat \
+            texinfo \
+            texlive-fonts-recommended \
+            texlive-latex-base \
+            texlive-latex-extra \
+            texlive-latex-recommended \
+            tidy
+
+      - name: Sync vendored C ABI header and verify no drift
+        working-directory: sciencekit-r
+        run: |
+          scripts/sync-header.sh "$GITHUB_WORKSPACE/sciencekit"
+          git diff --exit-code src/sciencekit.h
+
+      - name: Build sciencekit_ffi native library
+        working-directory: sciencekit-r
+        run: scripts/build-native-library.sh "$GITHUB_WORKSPACE/sciencekit"
+
+      - name: Run R CMD build and R CMD check
+        working-directory: sciencekit-r
+        run: |
+          R --version
+          R CMD build .
+          R CMD check .

@@ -1,0 +1,22 @@
+Package: sciencekitr
+Type: Package
+Title: R Bindings for the 'sciencekit' Machine-Learning Library
+Version: 0.1.0
+Authors@R: person("sciencekit", "contributors", email = "maintainers@neurono.ml", role = c("aut", "cre"))
+Author: sciencekit contributors [aut, cre]
+Maintainer: sciencekit contributors <maintainers@neurono.ml>
+Description: Idiomatic R bindings over the stable 'sciencekit_ffi' C ABI. Provides
+    external-pointer handles with automatic finalizers and idempotent 'close()'
+    methods, strict double-precision ('f64') dense matrix conversion, fitting,
+    prediction, transformation, scoring, model persistence, and structured
+    'sciencekit_error' conditions carrying native ABI status codes.
+License: Apache License (>= 2.0)
+URL: https://github.com/neurono-ml/sciencekit-r, https://neurono-ml.github.io/sciencekit-r/
+BugReports: https://github.com/neurono-ml/sciencekit-r/issues
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports: stats
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
+SystemRequirements: Prebuilt static library 'libsciencekit_ffi.a' from 'neurono-ml/sciencekit' (built via 'scripts/build-native-library.sh').
+NeedsCompilation: yes

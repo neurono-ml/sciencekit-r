@@ -1,0 +1,21 @@
+# Compiled objects and shared libraries
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+src/symbols.rds
+
+# Locally built native static/shared library from neurono-ml/sciencekit
+tools/native/*.a
+tools/native/*.so
+tools/native/*.dylib
+tools/native/*.dll
+
+# R build and check artifacts
+*.Rcheck/
+..Rcheck/
+sciencekitr_*.tar.gz
+.Rhistory
+.RData
+.Rproj.user/
+docs/book/

@@ -1,0 +1,9 @@
+^\.github$
+^\.gitignore$
+^LICENSE$
+^README\.md$
+^docs$
+^scripts$
+^sciencekitr_.*\.tar\.gz$
+^\.\.Rcheck$
+^.*\.Rcheck$
