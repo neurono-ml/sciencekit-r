@@ -67,4 +67,5 @@ jobs:
         run: |
           R --version
           R CMD build .
-          R CMD check .
+          R CMD check sciencekitr_*.tar.gz
+          R CMD check -o /tmp .

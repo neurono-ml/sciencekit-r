@@ -76,6 +76,13 @@ require_builder <- function(builder, operation) {
       "expected a `sciencekit_builder` object"
     )
   }
+  if (is_closed(builder)) {
+    raise_sciencekit_error(
+      SK_STATUS_INVALID_HANDLE,
+      operation,
+      "invalid handle: the builder handle has already been closed"
+    )
+  }
   builder
 }
 
@@ -182,7 +189,7 @@ sk_linear_regression <- function(include_intercept = TRUE, backend = "faer") {
 #' @param with_mean Logical scalar indicating whether to center columns by their
 #'   sample mean (default `TRUE`).
 #' @param with_std Logical scalar indicating whether to scale columns by their
-#'   standard deviation (default `TRUE`).
+#'   population standard deviation (default `TRUE`).
 #' @param backend Character scalar naming the math backend (default `"faer"`).
 #' @return An object of class `"sciencekit_builder"`.
 #' @export

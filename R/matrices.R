@@ -41,13 +41,6 @@ validate_features <- function(x, operation) {
       )
     }
     nrows <- col_lengths[[1L]]
-    if (nrows < 1L) {
-      raise_sciencekit_error(
-        SK_STATUS_INVALID_ARGUMENT,
-        operation,
-        "features `x` must have at least one row"
-      )
-    }
     for (j in seq_len(ncols)) {
       col <- x[[j]]
       if (!is.null(dim(col)) && length(dim(col)) > 1L) {
@@ -68,6 +61,13 @@ validate_features <- function(x, operation) {
           )
         )
       }
+    }
+    if (nrows < 1L) {
+      raise_sciencekit_error(
+        SK_STATUS_INVALID_ARGUMENT,
+        operation,
+        "features `x` must have at least one row"
+      )
     }
     mat <- matrix(unlist(x, use.names = FALSE), nrow = nrows, ncol = ncols)
     return(mat)

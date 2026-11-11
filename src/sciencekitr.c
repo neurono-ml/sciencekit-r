@@ -1,6 +1,7 @@
 #include "sciencekitr.h"
 #include "sciencekit.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -15,6 +16,17 @@ typedef struct SKRHandleBox {
     SKRHandleKind kind;
     void *raw;
 } SKRHandleBox;
+
+typedef struct SKRPredictCopyCtx {
+    const SKFfiArray *output;
+    R_xlen_t length;
+} SKRPredictCopyCtx;
+
+typedef struct SKRTransformCopyCtx {
+    const SKFfiArray *output;
+    int rows;
+    int cols;
+} SKRTransformCopyCtx;
 
 static size_t live_builders = 0;
 static size_t live_models = 0;
@@ -39,7 +51,14 @@ static SEXP err_result(SKFfiStatus status, const char *message) {
     if (status_str == NULL) {
         status_str = "unknown";
     }
-    const char *msg_str = (message != NULL && message[0] != '\0') ? message : status_str;
+
+    /* Copy the thread-local error message into a stack buffer before any R
+     * allocation runs, because R allocations can trigger GC finalizers that
+     * call sk_ffi_*_free() and clear the thread-local error slot. */
+    char msg_buf[2048];
+    const char *source = (message != NULL && message[0] != '\0') ? message : status_str;
+    strncpy(msg_buf, source, sizeof(msg_buf) - 1);
+    msg_buf[sizeof(msg_buf) - 1] = '\0';
 
     SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
     SET_STRING_ELT(names, 0, Rf_mkChar("ok"));
@@ -51,7 +70,7 @@ static SEXP err_result(SKFfiStatus status, const char *message) {
     SET_VECTOR_ELT(out, 0, Rf_ScalarLogical(0));
     SET_VECTOR_ELT(out, 1, Rf_ScalarInteger((int)status));
     SET_VECTOR_ELT(out, 2, Rf_mkString(status_str));
-    SET_VECTOR_ELT(out, 3, Rf_mkString(msg_str));
+    SET_VECTOR_ELT(out, 3, Rf_mkString(msg_buf));
     Rf_setAttrib(out, R_NamesSymbol, names);
 
     UNPROTECT(2);
@@ -65,12 +84,16 @@ static SKFfiStatus classify_null_pointer_error(const char *message) {
     if (strncmp(message, "invalid handle", 14) == 0) {
         return SK_FFI_STATUS_INVALID_HANDLE;
     }
-    if (strstr(message, "shape") != NULL || strstr(message, "dimension") != NULL ||
-        strstr(message, "rows") != NULL || strstr(message, "columns") != NULL) {
+    if (strncmp(message, "shape mismatch:", 15) == 0) {
         return SK_FFI_STATUS_SHAPE;
     }
-    if (strncmp(message, "operation `", 11) == 0 &&
-        strstr(message, "is not supported") != NULL) {
+    if ((strncmp(message, "operation `", 11) == 0 &&
+         strstr(message, "is not supported") != NULL) ||
+        strncmp(message, "strided arrays are not supported", 32) == 0 ||
+        strncmp(message, "data representation ", 20) == 0 ||
+        strncmp(message, "execution mode ", 15) == 0 ||
+        strncmp(message, "streaming batch buffer overflow:", 32) == 0 ||
+        strncmp(message, "device backend ", 15) == 0) {
         return SK_FFI_STATUS_UNSUPPORTED;
     }
     if (strstr(message, "not been fitted") != NULL) {
@@ -80,7 +103,9 @@ static SKFfiStatus classify_null_pointer_error(const char *message) {
         return SK_FFI_STATUS_IO;
     }
     if (strncmp(message, "internal error:", 15) == 0 ||
-        strncmp(message, "panic:", 6) == 0) {
+        strncmp(message, "panic:", 6) == 0 ||
+        strncmp(message, "failed to converge after ", 25) == 0 ||
+        strncmp(message, "device transfer failed:", 23) == 0) {
         return SK_FFI_STATUS_INTERNAL;
     }
     return SK_FFI_STATUS_INVALID_ARGUMENT;
@@ -190,7 +215,14 @@ static bool copy_r_matrix_to_row_major(SEXP mat_sexp,
     }
     size_t rows = (size_t)nrow;
     size_t cols = (size_t)ncol;
+    if (rows > SIZE_MAX / cols) {
+        return false;
+    }
     size_t total = rows * cols;
+    if (total > SIZE_MAX / sizeof(double) ||
+        (R_xlen_t)total != XLENGTH(mat_sexp)) {
+        return false;
+    }
     double *buffer = (double *)malloc(total * sizeof(double));
     if (buffer == NULL) {
         return false;
@@ -222,6 +254,9 @@ static bool copy_r_vector_f64(SEXP vec_sexp,
         return false;
     }
     size_t total = (size_t)len;
+    if (total > SIZE_MAX / sizeof(double)) {
+        return false;
+    }
     double *buffer = (double *)malloc(total * sizeof(double));
     if (buffer == NULL) {
         return false;
@@ -231,6 +266,40 @@ static bool copy_r_vector_f64(SEXP vec_sexp,
     out_shape[0] = (int64_t)len;
     *out_len = (int64_t)len;
     return true;
+}
+
+static void cleanup_ffi_output_array(void *data, Rboolean jump) {
+    (void)jump;
+    SKFfiArray *array = (SKFfiArray *)data;
+    if (array != NULL) {
+        (void)sk_ffi_array_free(array);
+    }
+}
+
+static SEXP alloc_and_copy_predictions(void *data) {
+    const SKRPredictCopyCtx *ctx = (const SKRPredictCopyCtx *)data;
+    SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, ctx->length));
+    if (ctx->length > 0 && ctx->output->data != NULL) {
+        memcpy(REAL(r_vec), ctx->output->data, (size_t)ctx->length * sizeof(double));
+    }
+    UNPROTECT(1);
+    return r_vec;
+}
+
+static SEXP alloc_and_copy_transform(void *data) {
+    const SKRTransformCopyCtx *ctx = (const SKRTransformCopyCtx *)data;
+    SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, ctx->rows, ctx->cols));
+    double *dst = REAL(r_mat);
+    const double *src = (const double *)ctx->output->data;
+    size_t rows = (size_t)ctx->rows;
+    size_t cols = (size_t)ctx->cols;
+    for (size_t r = 0; r < rows; ++r) {
+        for (size_t c = 0; c < cols; ++c) {
+            dst[r + c * rows] = src[r * cols + c];
+        }
+    }
+    UNPROTECT(1);
+    return r_mat;
 }
 
 SEXP c_sciencekit_version(void) {
@@ -485,11 +554,20 @@ SEXP c_sciencekit_predict(SEXP model_sexp, SEXP features_sexp) {
         return err_result(status, sk_ffi_last_error());
     }
 
-    R_xlen_t n = (R_xlen_t)output.len;
-    SEXP r_vec = PROTECT(Rf_allocVector(REALSXP, n));
-    if (n > 0 && output.data != NULL) {
-        memcpy(REAL(r_vec), output.data, (size_t)n * sizeof(double));
+    if (output.dtype != SK_FFI_DTYPE_F64) {
+        (void)sk_ffi_array_free(&output);
+        return err_result(SK_FFI_STATUS_UNSUPPORTED,
+                          "only double (f64) model outputs are supported in R");
     }
+    if (output.len < 0) {
+        (void)sk_ffi_array_free(&output);
+        return err_result(SK_FFI_STATUS_INTERNAL,
+                          "internal error: negative output array length");
+    }
+
+    SKRPredictCopyCtx ctx = {&output, (R_xlen_t)output.len};
+    SEXP r_vec = PROTECT(R_UnwindProtect(
+        alloc_and_copy_predictions, &ctx, cleanup_ffi_output_array, &output, NULL));
     (void)sk_ffi_array_free(&output);
 
     SEXP res = PROTECT(ok_result(r_vec));
@@ -531,25 +609,24 @@ SEXP c_sciencekit_transform(SEXP model_sexp, SEXP features_sexp) {
         return err_result(status, sk_ffi_last_error());
     }
 
-    if (output.ndim != 2 || output.shape == NULL || output.data == NULL) {
+    if (output.dtype != SK_FFI_DTYPE_F64) {
+        (void)sk_ffi_array_free(&output);
+        return err_result(SK_FFI_STATUS_UNSUPPORTED,
+                          "only double (f64) model outputs are supported in R");
+    }
+
+    if (output.ndim != 2 || output.shape == NULL || output.data == NULL ||
+        output.shape[0] <= 0 || output.shape[0] > INT_MAX ||
+        output.shape[1] <= 0 || output.shape[1] > INT_MAX) {
         (void)sk_ffi_array_free(&output);
         return err_result(SK_FFI_STATUS_INTERNAL,
-                          "internal error: transform did not return a 2D array");
+                          "internal error: transform did not return a valid 2D matrix");
     }
 
-    int out_rows = (int)output.shape[0];
-    int out_cols = (int)output.shape[1];
-    size_t rows = (size_t)out_rows;
-    size_t cols = (size_t)out_cols;
-
-    SEXP r_mat = PROTECT(Rf_allocMatrix(REALSXP, out_rows, out_cols));
-    double *dst = REAL(r_mat);
-    const double *src = (const double *)output.data;
-    for (size_t r = 0; r < rows; ++r) {
-        for (size_t c = 0; c < cols; ++c) {
-            dst[r + c * rows] = src[r * cols + c];
-        }
-    }
+    SKRTransformCopyCtx ctx = {
+        &output, (int)output.shape[0], (int)output.shape[1]};
+    SEXP r_mat = PROTECT(R_UnwindProtect(
+        alloc_and_copy_transform, &ctx, cleanup_ffi_output_array, &output, NULL));
     (void)sk_ffi_array_free(&output);
 
     SEXP res = PROTECT(ok_result(r_mat));

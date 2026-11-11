@@ -42,6 +42,11 @@ test_that("integer, logical, character and f32 inputs are rejected without silen
   expect_s3_class(err_f32, "sciencekit_error")
   expect_identical(err_f32$status, "unsupported")
   expect_identical(err_f32$status_code, 4L)
+
+  f32_mat <- structure(matrix(c(1.0, 2.0, 3.0, 4.0), nrow = 2, ncol = 2), class = "float32")
+  err_f32_mat <- tryCatch(fit(builder, f32_mat, c(1.0, 2.0)), error = identity)
+  expect_s3_class(err_f32_mat, "sciencekit_error")
+  expect_match(err_f32_mat$message, "only double \\(f64\\)", ignore.case = TRUE)
 })
 
 test_that("shape mismatches raise structured shape errors", {

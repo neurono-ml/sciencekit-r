@@ -48,10 +48,55 @@ test_that("close is idempotent and operations on closed handles raise invalid-ha
   expect_identical(err_fit$status, "invalid-handle")
   expect_identical(err_fit$status_code, 1L)
 
+  err_setter <- tryCatch(set_backend(builder, "invalid"), error = identity)
+  expect_s3_class(err_setter, "sciencekit_error")
+  expect_identical(err_setter$status, "invalid-handle")
+  expect_identical(err_setter$status_code, 1L)
+
   err_pred <- tryCatch(predict(model, x), error = identity)
   expect_s3_class(err_pred, "sciencekit_error")
   expect_identical(err_pred$status, "invalid-handle")
   expect_identical(err_pred$status_code, 1L)
+
+  err_tr <- tryCatch(transform(model, x), error = identity)
+  expect_s3_class(err_tr, "sciencekit_error")
+  expect_identical(err_tr$status, "invalid-handle")
+  expect_identical(err_tr$status_code, 1L)
+
+  err_sc <- tryCatch(score(model, x, y), error = identity)
+  expect_s3_class(err_sc, "sciencekit_error")
+  expect_identical(err_sc$status, "invalid-handle")
+  expect_identical(err_sc$status_code, 1L)
+
+  err_sv <- tryCatch(save_model(model, tempfile()), error = identity)
+  expect_s3_class(err_sv, "sciencekit_error")
+  expect_identical(err_sv$status, "invalid-handle")
+  expect_identical(err_sv$status_code, 1L)
+})
+
+test_that("ABI error message survives GC finalizer activity under gctorture", {
+  x <- matrix(c(0.0, 1.0, 0.0, 2.0, 0.0, 0.0, 1.0, 3.0), nrow = 4, ncol = 2)
+  y <- c(1.0, 3.0, 4.0, 14.0)
+  builder <- sk_linear_regression()
+  on.exit(close(builder), add = TRUE)
+  model <- fit(builder, x, y)
+  on.exit(close(model), add = TRUE)
+
+  # Leave an unreachable handle eligible for finalization during error allocation.
+  local({
+    unused <- sk_standard_scaler()
+    invisible(unused)
+  })
+
+  gctorture(TRUE)
+  err <- tryCatch(
+    transform(model, x),
+    error = identity,
+    finally = gctorture(FALSE)
+  )
+  expect_s3_class(err, "sciencekit_error")
+  expect_identical(err$status, "unsupported")
+  expect_true(nzchar(err$native_message))
 })
 
 test_that("garbage collector finalizers release unreachable handles", {

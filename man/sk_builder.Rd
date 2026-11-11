@@ -31,7 +31,7 @@ sk_standard_scaler(with_mean = TRUE, with_std = TRUE, backend = "faer")
   \item{with_mean}{Logical scalar configuring whether the standard scaler
     centers each feature by its sample mean.}
   \item{with_std}{Logical scalar configuring whether the standard scaler divides
-    each feature by its sample standard deviation.}
+    each feature by its population standard deviation.}
   \item{backend}{Character scalar selecting the math backend: \code{"faer"},
     \code{"matrix_multiply"}, or \code{"ndarray_linalg"}.}
 }

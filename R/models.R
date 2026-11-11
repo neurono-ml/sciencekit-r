@@ -8,6 +8,13 @@ require_model <- function(model, operation) {
       "expected a `sciencekit_model` object"
     )
   }
+  if (is_closed(model)) {
+    raise_sciencekit_error(
+      SK_STATUS_INVALID_HANDLE,
+      operation,
+      "invalid handle: the model handle has already been closed"
+    )
+  }
   model
 }
 
@@ -19,7 +26,7 @@ require_path <- function(path, operation) {
       "`path` must be a non-empty character scalar"
     )
   }
-  path
+  path.expand(path)
 }
 
 #' Fit a sciencekit estimator builder on dense data
