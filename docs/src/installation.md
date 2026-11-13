@@ -55,6 +55,18 @@ R CMD build .
 R CMD check .
 ```
 
+The source tarball deliberately excludes `tools/native/`: the static Rust archive is a
+build artifact, not source, and shipping it would make the tarball ~10 MB and raise an
+`R CMD check` NOTE. Point the tarball check at the archive built in the checkout:
+
+```bash
+SCIENCEKIT_LIB_DIR="$PWD/tools/native" R CMD check --no-manual sciencekitr_*.tar.gz
+```
+
+`R CMD check .` on the source directory still works without the variable because
+`src/Makevars` defaults `SCIENCEKIT_LIB_DIR` to `../tools/native`. The single remaining
+NOTE is the installed size of the statically linked `sciencekitr.so`.
+
 To use a custom location for `libsciencekit_ffi.a` without copying it into `tools/native/`, set `SCIENCEKIT_LIB_DIR` before invoking `R CMD INSTALL` or `R CMD check`:
 
 ```bash

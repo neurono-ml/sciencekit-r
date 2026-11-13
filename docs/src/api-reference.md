@@ -80,3 +80,15 @@ Returns a named integer vector `c(builders = ..., models = ...)` counting curren
 ### `abi_version()` & `abi_features()`
 
 Return the linked `sciencekit_ffi` semantic version (`c(major = 1L, minor = 0L, patch = 0L)`) and advertised capability flags.
+
+---
+
+## Printing
+
+### `print(x, ...)` (`print.sciencekit_builder`, `print.sciencekit_model`)
+
+S3 methods for `base::print()`. Both print a one-line summary of the form
+`<sciencekit_builder family='...' dtype='f64' state='open|closed'>` and return `x`
+invisibly. The `state` field flips to `"closed"` as soon as `close()` releases the
+native handle. Runnable examples live in
+[Printing and Object Inspection](guides/inspection.md).
