@@ -12,6 +12,7 @@
 - [Errors and Status Codes](guides/errors.md)
 - [Handle Lifecycle](guides/lifecycle.md)
 - [Dense Matrices and Data Frames](guides/matrices.md)
+- [Printing and Object Inspection](guides/inspection.md)
 
 # Reference & Internals
 
