@@ -29,6 +29,17 @@ R CMD build .
 R CMD check .
 ```
 
+The source tarball excludes `tools/native/` (the 37 MB static Rust archive is a build
+artifact, not source), so checking the tarball requires pointing the compiler at the
+checkout's archive:
+
+```bash
+SCIENCEKIT_LIB_DIR="$PWD/tools/native" R CMD check --no-manual sciencekitr_*.tar.gz
+```
+
+`R CMD check .` on the source directory still works without the variable because
+`src/Makevars` defaults `SCIENCEKIT_LIB_DIR` to `../tools/native`.
+
 ## Quick Example
 
 ```r

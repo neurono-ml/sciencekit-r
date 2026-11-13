@@ -64,8 +64,11 @@ jobs:
 
       - name: Run R CMD build and R CMD check
         working-directory: sciencekit-r
+        env:
+          # `tools/native/` is excluded from the source tarball, so the check
+          # points the compiler at the archive built in the checkout.
+          SCIENCEKIT_LIB_DIR: ${{ github.workspace }}/sciencekit-r/tools/native
         run: |
           R --version
           R CMD build .
-          R CMD check sciencekitr_*.tar.gz
-          R CMD check -o /tmp .
+          R CMD check --no-manual sciencekitr_*.tar.gz

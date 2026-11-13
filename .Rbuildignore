@@ -4,6 +4,7 @@
 ^README\.md$
 ^docs$
 ^scripts$
+^tools$
 ^sciencekitr_.*\.tar\.gz$
 ^\.\.Rcheck$
 ^.*\.Rcheck$
